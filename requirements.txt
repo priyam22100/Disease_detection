@@ -1,0 +1,7 @@
+tensorflow>=2.14.0
+scikit-learn
+matplotlib
+seaborn
+Pillow
+streamlit
+kagglehub

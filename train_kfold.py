@@ -12,12 +12,22 @@ from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLRO
 from sklearn.model_selection import StratifiedKFold
 import kagglehub
 
+def clean_label(label):
+    label = label.lower()
+    if 'adenocarcinoma' in label:
+        return 'Adenocarcinoma'
+    elif 'large.cell.carcinoma' in label:
+        return 'Large Cell Carcinoma'
+    elif 'squamous.cell.carcinoma' in label:
+        return 'Squamous Cell Carcinoma'
+    else:
+        return 'Normal'
+
 def get_dataframe(data_dir):
-    """Recursively fetch all image files and return a DataFrame with paths and labels."""
+    """Recursively fetch all image files and return a DataFrame with paths and cleaned labels."""
     filepaths = []
     labels = []
 
-    # Kaggle dataset often has train/test/valid folders. We'll pool them all for k-fold
     for split in ['train', 'valid', 'test']:
         split_path = os.path.join(data_dir, split)
         if not os.path.exists(split_path):
@@ -31,7 +41,7 @@ def get_dataframe(data_dir):
             for img_file in os.listdir(class_path):
                 if img_file.endswith(('.png', '.jpg', '.jpeg')):
                     filepaths.append(os.path.join(class_path, img_file))
-                    labels.append(class_name)
+                    labels.append(clean_label(class_name))
 
     df = pd.DataFrame({
         'filepath': filepaths,
@@ -110,7 +120,6 @@ def train_kfold():
 
         model, base_model = build_model(num_classes)
 
-        # Phase 1: Top layers
         model.compile(optimizer=Adam(learning_rate=0.001),
                       loss='categorical_crossentropy',
                       metrics=['accuracy'])
@@ -123,7 +132,6 @@ def train_kfold():
         print("Training top layers...")
         model.fit(train_generator, validation_data=valid_generator, epochs=10, callbacks=callbacks)
 
-        # Phase 2: Fine-Tuning
         base_model.trainable = True
         for layer in base_model.layers[:-30]:
             layer.trainable = False
@@ -132,21 +140,18 @@ def train_kfold():
                       loss='categorical_crossentropy',
                       metrics=['accuracy'])
 
-        # Best model path specific to this fold
         fold_model_path = f'model_fold_{fold+1}.h5'
         callbacks.append(ModelCheckpoint(fold_model_path, monitor='val_accuracy', save_best_only=True, mode='max', verbose=0))
 
         print("Fine tuning model...")
         history = model.fit(train_generator, validation_data=valid_generator, epochs=20, callbacks=callbacks)
 
-        # Check if this fold produced the overall best model
         val_accs = history.history.get('val_accuracy', [0])
         best_fold_acc = max(val_accs)
 
         if best_fold_acc > best_overall_val_acc:
             best_overall_val_acc = best_fold_acc
             best_fold = fold + 1
-            # Copy to global best model
             if os.path.exists(fold_model_path):
                 import shutil
                 shutil.copy(fold_model_path, 'best_model.h5')
@@ -164,6 +169,6 @@ if __name__ == '__main__':
         except RuntimeError as e:
             print(e)
     else:
-        print("No GPU found, falling back to CPU.")
+        print("No GPU found by TensorFlow. (If you have an RTX GPU, ensure you have installed the correct NVIDIA drivers, CUDA Toolkit, cuDNN, and 'tensorflow[and-cuda]' pip package.)")
 
     train_kfold()

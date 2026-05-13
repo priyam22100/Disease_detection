@@ -1,4 +1,5 @@
 import os
+import pandas as pd
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.models import load_model
@@ -8,6 +9,34 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.preprocessing import label_binarize
 import kagglehub
+
+def clean_label(label):
+    label = label.lower()
+    if 'adenocarcinoma' in label:
+        return 'Adenocarcinoma'
+    elif 'large.cell.carcinoma' in label:
+        return 'Large Cell Carcinoma'
+    elif 'squamous.cell.carcinoma' in label:
+        return 'Squamous Cell Carcinoma'
+    else:
+        return 'Normal'
+
+def get_dataframe(data_dir, split_name):
+    filepaths = []
+    labels = []
+    split_path = os.path.join(data_dir, split_name)
+    if not os.path.exists(split_path):
+        return pd.DataFrame()
+
+    for class_name in os.listdir(split_path):
+        class_path = os.path.join(split_path, class_name)
+        if not os.path.isdir(class_path):
+            continue
+        for img_file in os.listdir(class_path):
+            if img_file.endswith(('.png', '.jpg', '.jpeg')):
+                filepaths.append(os.path.join(class_path, img_file))
+                labels.append(clean_label(class_name))
+    return pd.DataFrame({'filepath': filepaths, 'label': labels})
 
 def evaluate():
     model_path = 'best_model.h5'
@@ -19,16 +48,19 @@ def evaluate():
     model = load_model(model_path)
 
     path = kagglehub.dataset_download('mohamedhanyyy/chest-ctscan-images')
-    test_dir = os.path.join(path, "Data", "test")
+    data_dir = os.path.join(path, "Data")
 
-    # Must match train.py
+    test_df = get_dataframe(data_dir, 'test')
+
     IMG_SIZE = (300, 300)
     BATCH_SIZE = 32
 
     test_datagen = ImageDataGenerator()
 
-    test_generator = test_datagen.flow_from_directory(
-        test_dir,
+    test_generator = test_datagen.flow_from_dataframe(
+        test_df,
+        x_col='filepath',
+        y_col='label',
         target_size=IMG_SIZE,
         batch_size=BATCH_SIZE,
         class_mode='categorical',
@@ -36,7 +68,6 @@ def evaluate():
     )
 
     print("Evaluating model on test dataset...")
-    # This automatically computes Loss, Accuracy, Precision, Recall
     results = model.evaluate(test_generator, verbose=1)
 
     loss = results[0]
@@ -60,10 +91,14 @@ def evaluate():
     print("\nGenerating predictions for Confusion Matrix and ROC curve...")
     Y_pred = model.predict(test_generator, verbose=1)
     y_pred = np.argmax(Y_pred, axis=1)
-    y_true = test_generator.classes
-    class_labels = list(test_generator.class_indices.keys())
 
-    # Confusion Matrix
+    # We must match the class indices that the generator assigned
+    class_indices = test_generator.class_indices
+    # Reverse dict
+    index_to_class = {v: k for k, v in class_indices.items()}
+    y_true = test_generator.classes
+    class_labels = [index_to_class[i] for i in range(len(class_indices))]
+
     print("Generating Confusion Matrix...")
     cm = confusion_matrix(y_true, y_pred)
     plt.figure(figsize=(10, 8))
@@ -79,7 +114,6 @@ def evaluate():
     print("\nClassification Report:")
     print(classification_report(y_true, y_pred, target_names=class_labels))
 
-    # ROC Curve
     print("Generating ROC Curve...")
     n_classes = len(class_labels)
     Y_true_bin = label_binarize(y_true, classes=range(n_classes))
@@ -88,7 +122,6 @@ def evaluate():
     tpr = dict()
     roc_auc = dict()
     for i in range(n_classes):
-        # some labels might not be present if predicting completely wrong, safe fallback
         if np.sum(Y_true_bin[:, i]) > 0:
             fpr[i], tpr[i], _ = roc_curve(Y_true_bin[:, i], Y_pred[:, i])
             roc_auc[i] = auc(fpr[i], tpr[i])

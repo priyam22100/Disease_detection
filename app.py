@@ -77,7 +77,7 @@ if uploaded_file is not None:
     image = Image.open(uploaded_file).convert('RGB')
 
     with col1:
-        st.image(image, caption='Original Image', width=None) # 'width=None' is auto size in Streamlit, or use custom width
+        st.image(image, caption='Original Image', use_container_width=True)
 
     st.write("Analyzing the image...")
 
@@ -99,13 +99,14 @@ if uploaded_file is not None:
     last_conv_layer_name = None
     target_model = model
 
+    # If the model is a Sequential or Functional wrapped around a base model (like EfficientNet)
     for layer in model.layers:
         if isinstance(layer, tf.keras.Model):
             target_model = layer
             break
 
+    # Now find the last convolutional layer in the target model
     for layer in reversed(target_model.layers):
-        # Handle keras >= 3 explicitly where Conv2D is generic
         if layer.__class__.__name__ == 'Conv2D':
             last_conv_layer_name = layer.name
             break
@@ -122,7 +123,7 @@ if uploaded_file is not None:
             heatmap = make_gradcam_heatmap(img_array, model, last_conv_layer_name, predicted_class_index)
             gradcam_img = display_gradcam(image.resize(model_input_shape), heatmap)
             with col2:
-                st.image(gradcam_img, caption='Grad-CAM (Focus Area)', width=None)
+                st.image(gradcam_img, caption='Grad-CAM (Focus Area)', use_container_width=True)
         except Exception as e:
             st.warning(f"Could not generate Grad-CAM heatmap: {e}")
     else:

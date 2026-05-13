@@ -1,12 +1,15 @@
 import os
 import pandas as pd
+import numpy as np
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.applications import EfficientNetB3
+from tensorflow.keras.applications import ResNet50V2
 from tensorflow.keras.layers import Dense, GlobalAveragePooling2D, Dropout
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
+from tensorflow.keras.applications.resnet_v2 import preprocess_input
+from sklearn.utils.class_weight import compute_class_weight
 import kagglehub
 
 def clean_label(label):
@@ -45,10 +48,12 @@ def train():
     train_df = get_dataframe(data_dir, 'train')
     valid_df = get_dataframe(data_dir, 'valid')
 
-    IMG_SIZE = (300, 300)
+    IMG_SIZE = (224, 224)
     BATCH_SIZE = 32
 
+    # Using ResNet50V2 specific preprocessing
     train_datagen = ImageDataGenerator(
+        preprocessing_function=preprocess_input,
         rotation_range=20,
         width_shift_range=0.2,
         height_shift_range=0.2,
@@ -58,7 +63,7 @@ def train():
         fill_mode='nearest'
     )
 
-    test_datagen = ImageDataGenerator()
+    test_datagen = ImageDataGenerator(preprocessing_function=preprocess_input)
 
     train_generator = train_datagen.flow_from_dataframe(
         train_df,
@@ -78,14 +83,23 @@ def train():
         class_mode='categorical'
     )
 
+    # Handle Class Imbalance
+    class_weights_arr = compute_class_weight(
+        class_weight='balanced',
+        classes=np.unique(train_generator.classes),
+        y=train_generator.classes
+    )
+    class_weights = dict(enumerate(class_weights_arr))
+    print(f"Computed Class Weights: {class_weights}")
+
     num_classes = train_df['label'].nunique()
 
-    base_model = EfficientNetB3(weights='imagenet', include_top=False, input_shape=(300, 300, 3))
+    base_model = ResNet50V2(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
     base_model.trainable = False
 
     x = base_model.output
     x = GlobalAveragePooling2D()(x)
-    x = Dropout(0.4)(x)
+    x = Dropout(0.5)(x)
     predictions = Dense(num_classes, activation='softmax')(x)
 
     model = Model(inputs=base_model.input, outputs=predictions)
@@ -96,12 +110,18 @@ def train():
 
     callbacks = [
         ModelCheckpoint('best_model.h5', monitor='val_accuracy', save_best_only=True, mode='max', verbose=1),
-        EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True, verbose=1),
+        EarlyStopping(monitor='val_loss', patience=8, restore_best_weights=True, verbose=1),
         ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, verbose=1, min_lr=1e-6)
     ]
 
     print("Training top layers...")
-    model.fit(train_generator, validation_data=valid_generator, epochs=15, callbacks=callbacks)
+    model.fit(
+        train_generator,
+        validation_data=valid_generator,
+        epochs=15,
+        class_weight=class_weights,
+        callbacks=callbacks
+    )
 
     base_model.trainable = True
     for layer in base_model.layers[:-30]:
@@ -112,7 +132,13 @@ def train():
                   metrics=['accuracy', tf.keras.metrics.Precision(name='precision'), tf.keras.metrics.Recall(name='recall')])
 
     print("Fine tuning model...")
-    model.fit(train_generator, validation_data=valid_generator, epochs=30, callbacks=callbacks)
+    model.fit(
+        train_generator,
+        validation_data=valid_generator,
+        epochs=30,
+        class_weight=class_weights,
+        callbacks=callbacks
+    )
     print("Training Complete. Model saved as best_model.h5.")
 
 if __name__ == '__main__':
@@ -125,6 +151,6 @@ if __name__ == '__main__':
         except RuntimeError as e:
             print(e)
     else:
-        print("No GPU found by TensorFlow. (If you have an RTX GPU, ensure you have installed the correct NVIDIA drivers, CUDA Toolkit, cuDNN, and 'tensorflow[and-cuda]' pip package.)")
+        print("No GPU found by TensorFlow.")
 
     train()

@@ -1,15 +1,16 @@
 import os
-import glob
 import pandas as pd
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.applications import EfficientNetB3
+from tensorflow.keras.applications import ResNet50V2
 from tensorflow.keras.layers import Dense, GlobalAveragePooling2D, Dropout
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
+from tensorflow.keras.applications.resnet_v2 import preprocess_input
 from sklearn.model_selection import StratifiedKFold
+from sklearn.utils.class_weight import compute_class_weight
 import kagglehub
 
 def clean_label(label):
@@ -24,7 +25,6 @@ def clean_label(label):
         return 'Normal'
 
 def get_dataframe(data_dir):
-    """Recursively fetch all image files and return a DataFrame with paths and cleaned labels."""
     filepaths = []
     labels = []
 
@@ -50,12 +50,12 @@ def get_dataframe(data_dir):
     return df
 
 def build_model(num_classes):
-    base_model = EfficientNetB3(weights='imagenet', include_top=False, input_shape=(300, 300, 3))
+    base_model = ResNet50V2(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
     base_model.trainable = False
 
     x = base_model.output
     x = GlobalAveragePooling2D()(x)
-    x = Dropout(0.4)(x)
+    x = Dropout(0.5)(x)
     predictions = Dense(num_classes, activation='softmax')(x)
 
     model = Model(inputs=base_model.input, outputs=predictions)
@@ -72,13 +72,14 @@ def train_kfold():
     num_classes = df['label'].nunique()
     print(f"Classes: {df['label'].unique()}")
 
-    IMG_SIZE = (300, 300)
+    IMG_SIZE = (224, 224)
     BATCH_SIZE = 32
     FOLDS = 5
 
     skf = StratifiedKFold(n_splits=FOLDS, shuffle=True, random_state=42)
 
     train_datagen = ImageDataGenerator(
+        preprocessing_function=preprocess_input,
         rotation_range=20,
         width_shift_range=0.2,
         height_shift_range=0.2,
@@ -88,7 +89,7 @@ def train_kfold():
         fill_mode='nearest'
     )
 
-    valid_datagen = ImageDataGenerator()
+    valid_datagen = ImageDataGenerator(preprocessing_function=preprocess_input)
 
     best_overall_val_acc = 0.0
     best_fold = -1
@@ -118,6 +119,13 @@ def train_kfold():
             shuffle=False
         )
 
+        class_weights_arr = compute_class_weight(
+            class_weight='balanced',
+            classes=np.unique(train_generator.classes),
+            y=train_generator.classes
+        )
+        class_weights = dict(enumerate(class_weights_arr))
+
         model, base_model = build_model(num_classes)
 
         model.compile(optimizer=Adam(learning_rate=0.001),
@@ -125,12 +133,18 @@ def train_kfold():
                       metrics=['accuracy'])
 
         callbacks = [
-            EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True, verbose=1),
+            EarlyStopping(monitor='val_loss', patience=6, restore_best_weights=True, verbose=1),
             ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=2, verbose=1, min_lr=1e-6)
         ]
 
         print("Training top layers...")
-        model.fit(train_generator, validation_data=valid_generator, epochs=10, callbacks=callbacks)
+        model.fit(
+            train_generator,
+            validation_data=valid_generator,
+            epochs=10,
+            class_weight=class_weights,
+            callbacks=callbacks
+        )
 
         base_model.trainable = True
         for layer in base_model.layers[:-30]:
@@ -144,7 +158,13 @@ def train_kfold():
         callbacks.append(ModelCheckpoint(fold_model_path, monitor='val_accuracy', save_best_only=True, mode='max', verbose=0))
 
         print("Fine tuning model...")
-        history = model.fit(train_generator, validation_data=valid_generator, epochs=20, callbacks=callbacks)
+        history = model.fit(
+            train_generator,
+            validation_data=valid_generator,
+            epochs=20,
+            class_weight=class_weights,
+            callbacks=callbacks
+        )
 
         val_accs = history.history.get('val_accuracy', [0])
         best_fold_acc = max(val_accs)
@@ -169,6 +189,6 @@ if __name__ == '__main__':
         except RuntimeError as e:
             print(e)
     else:
-        print("No GPU found by TensorFlow. (If you have an RTX GPU, ensure you have installed the correct NVIDIA drivers, CUDA Toolkit, cuDNN, and 'tensorflow[and-cuda]' pip package.)")
+        print("No GPU found.")
 
     train_kfold()

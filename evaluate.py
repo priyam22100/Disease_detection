@@ -3,6 +3,7 @@ import pandas as pd
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.models import load_model
+from tensorflow.keras.applications.resnet_v2 import preprocess_input
 import numpy as np
 from sklearn.metrics import classification_report, confusion_matrix, roc_curve, auc
 import matplotlib.pyplot as plt
@@ -45,11 +46,8 @@ def evaluate():
         return
 
     print(f"Loading model from {model_path}...")
-    # Add compile=False since we just need it for evaluation metrics that we can compute manually,
-    # or compile it again to avoid the missing metric list issue on Windows TensorFlow versions
     model = load_model(model_path, compile=False)
 
-    # Recompile to ensure metrics are present in model.evaluate
     model.compile(optimizer='adam',
                   loss='categorical_crossentropy',
                   metrics=['accuracy', tf.keras.metrics.Precision(name='precision'), tf.keras.metrics.Recall(name='recall')])
@@ -59,10 +57,10 @@ def evaluate():
 
     test_df = get_dataframe(data_dir, 'test')
 
-    IMG_SIZE = (300, 300)
+    IMG_SIZE = (224, 224)
     BATCH_SIZE = 32
 
-    test_datagen = ImageDataGenerator()
+    test_datagen = ImageDataGenerator(preprocessing_function=preprocess_input)
 
     test_generator = test_datagen.flow_from_dataframe(
         test_df,
@@ -80,12 +78,10 @@ def evaluate():
     loss = results[0]
     accuracy = results[1]
 
-    # If precision/recall aren't returned properly in the list, compute manually
     if len(results) > 2:
         precision = results[2]
         recall = results[3]
     else:
-        print("Model evaluate did not return precision/recall directly. Fetching from sklearn metrics.")
         Y_pred = model.predict(test_generator, verbose=0)
         y_pred = np.argmax(Y_pred, axis=1)
         y_true = test_generator.classes

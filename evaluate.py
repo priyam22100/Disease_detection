@@ -15,12 +15,14 @@ def evaluate():
         print(f"Model file {model_path} not found. Please train the model first.")
         return
 
+    print(f"Loading model from {model_path}...")
     model = load_model(model_path)
 
     path = kagglehub.dataset_download('mohamedhanyyy/chest-ctscan-images')
     test_dir = os.path.join(path, "Data", "test")
 
-    IMG_SIZE = (224, 224)
+    # Must match train.py
+    IMG_SIZE = (300, 300)
     BATCH_SIZE = 32
 
     test_datagen = ImageDataGenerator()
@@ -33,7 +35,14 @@ def evaluate():
         shuffle=False
     )
 
-    loss, accuracy, precision, recall = model.evaluate(test_generator, verbose=1)
+    print("Evaluating model on test dataset...")
+    # This automatically computes Loss, Accuracy, Precision, Recall
+    results = model.evaluate(test_generator, verbose=1)
+
+    loss = results[0]
+    accuracy = results[1]
+    precision = results[2]
+    recall = results[3]
 
     if (precision + recall) > 0:
         f1_score = 2 * (precision * recall) / (precision + recall)
@@ -48,11 +57,14 @@ def evaluate():
     print(f"F1-Score: {f1_score:.4f}")
 
     test_generator.reset()
+    print("\nGenerating predictions for Confusion Matrix and ROC curve...")
     Y_pred = model.predict(test_generator, verbose=1)
     y_pred = np.argmax(Y_pred, axis=1)
     y_true = test_generator.classes
     class_labels = list(test_generator.class_indices.keys())
 
+    # Confusion Matrix
+    print("Generating Confusion Matrix...")
     cm = confusion_matrix(y_true, y_pred)
     plt.figure(figsize=(10, 8))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=class_labels, yticklabels=class_labels)
@@ -62,10 +74,13 @@ def evaluate():
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
     plt.savefig('confusion_matrix.png')
+    print("Saved confusion_matrix.png")
 
     print("\nClassification Report:")
     print(classification_report(y_true, y_pred, target_names=class_labels))
 
+    # ROC Curve
+    print("Generating ROC Curve...")
     n_classes = len(class_labels)
     Y_true_bin = label_binarize(y_true, classes=range(n_classes))
 
@@ -73,8 +88,12 @@ def evaluate():
     tpr = dict()
     roc_auc = dict()
     for i in range(n_classes):
-        fpr[i], tpr[i], _ = roc_curve(Y_true_bin[:, i], Y_pred[:, i])
-        roc_auc[i] = auc(fpr[i], tpr[i])
+        # some labels might not be present if predicting completely wrong, safe fallback
+        if np.sum(Y_true_bin[:, i]) > 0:
+            fpr[i], tpr[i], _ = roc_curve(Y_true_bin[:, i], Y_pred[:, i])
+            roc_auc[i] = auc(fpr[i], tpr[i])
+        else:
+            fpr[i], tpr[i], roc_auc[i] = [0], [0], 0
 
     plt.figure(figsize=(10, 8))
     colors = ['blue', 'red', 'green', 'orange']
@@ -91,6 +110,7 @@ def evaluate():
     plt.legend(loc="lower right")
     plt.tight_layout()
     plt.savefig('roc_curve.png')
+    print("Saved roc_curve.png")
 
 if __name__ == '__main__':
     evaluate()

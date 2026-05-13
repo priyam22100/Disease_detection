@@ -35,10 +35,11 @@ if uploaded_file is not None:
 
     st.write("Analyzing the image...")
 
-    img = image.resize((224, 224))
+    # Needs to match train.py IMG_SIZE (300, 300)
+    img = image.resize((300, 300))
     img_array = img_to_array(img)
     img_array = np.expand_dims(img_array, axis=0)
-    # Note: no rescaling for EfficientNet
+    # No manual rescale needed since we used EfficientNet
 
     predictions = model.predict(img_array)
     predicted_class_index = np.argmax(predictions[0])

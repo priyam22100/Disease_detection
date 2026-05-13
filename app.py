@@ -29,9 +29,20 @@ class_names = [
 ]
 
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name, pred_index=None):
+    # Retrieve the inner model if wrapped
+    target_model = model
+    for layer in model.layers:
+        if isinstance(layer, tf.keras.Model):
+            try:
+                _ = layer.get_layer(last_conv_layer_name)
+                target_model = layer
+                break
+            except:
+                pass
+
     grad_model = tf.keras.models.Model(
-        model.inputs,
-        [model.get_layer(last_conv_layer_name).output, model.output]
+        target_model.inputs,
+        [target_model.get_layer(last_conv_layer_name).output, target_model.output]
     )
 
     with tf.GradientTape() as tape:
@@ -71,7 +82,12 @@ if uploaded_file is not None:
 
     st.write("Analyzing the image...")
 
-    img = image.resize((300, 300))
+    # Needs to match the input shape of the loaded model dynamically
+    model_input_shape = model.layers[0].input_shape[0][1:3] if isinstance(model.layers[0].input_shape, list) else model.layers[0].input_shape[1:3]
+    if model_input_shape[0] is None:
+        model_input_shape = (300, 300) # fallback
+
+    img = image.resize(model_input_shape)
     img_array = img_to_array(img)
     img_array = np.expand_dims(img_array, axis=0)
 
@@ -81,36 +97,34 @@ if uploaded_file is not None:
 
     predicted_label = class_names[predicted_class_index]
 
+    # More robust logic to find the last Conv2D layer specifically:
     last_conv_layer_name = None
-    for layer in reversed(model.layers):
-        if hasattr(layer, 'name') and 'conv' in layer.name.lower() and hasattr(layer, 'output_shape') and len(layer.output_shape) == 4:
+    target_model = model
+
+    # If the model is a Sequential or Functional wrapped around a base model (like EfficientNet)
+    for layer in model.layers:
+        if isinstance(layer, tf.keras.Model):
+            target_model = layer
+            break
+
+    # Now find the last convolutional layer in the target model
+    for layer in reversed(target_model.layers):
+        if isinstance(layer, tf.keras.layers.Conv2D):
             last_conv_layer_name = layer.name
             break
-        elif isinstance(layer, tf.keras.Model):
-            for inner_layer in reversed(layer.layers):
-                if hasattr(inner_layer, 'name') and 'conv' in inner_layer.name.lower() and hasattr(inner_layer, 'output_shape') and len(inner_layer.output_shape) == 4:
-                    last_conv_layer_name = inner_layer.name
-                    model = layer
-                    break
-            if last_conv_layer_name:
-                break
 
-    # Fallback to top_conv if searching by 'conv' in name fails
+    # Specific fallback for EfficientNet models which use 'top_conv'
     if not last_conv_layer_name:
-         for layer in reversed(model.layers):
-            if isinstance(layer, tf.keras.Model):
-                try:
-                    _ = layer.get_layer('top_conv')
-                    last_conv_layer_name = 'top_conv'
-                    model = layer
-                    break
-                except ValueError:
-                    pass
+        try:
+            target_model.get_layer('top_conv')
+            last_conv_layer_name = 'top_conv'
+        except:
+            pass
 
     if last_conv_layer_name:
         try:
             heatmap = make_gradcam_heatmap(img_array, model, last_conv_layer_name, predicted_class_index)
-            gradcam_img = display_gradcam(image.resize((300, 300)), heatmap)
+            gradcam_img = display_gradcam(image.resize(model_input_shape), heatmap)
             with col2:
                 st.image(gradcam_img, caption=f'Grad-CAM (Focus Area)', use_container_width=True)
         except Exception as e:

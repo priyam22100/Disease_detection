@@ -45,7 +45,14 @@ def evaluate():
         return
 
     print(f"Loading model from {model_path}...")
-    model = load_model(model_path)
+    # Add compile=False since we just need it for evaluation metrics that we can compute manually,
+    # or compile it again to avoid the missing metric list issue on Windows TensorFlow versions
+    model = load_model(model_path, compile=False)
+
+    # Recompile to ensure metrics are present in model.evaluate
+    model.compile(optimizer='adam',
+                  loss='categorical_crossentropy',
+                  metrics=['accuracy', tf.keras.metrics.Precision(name='precision'), tf.keras.metrics.Recall(name='recall')])
 
     path = kagglehub.dataset_download('mohamedhanyyy/chest-ctscan-images')
     data_dir = os.path.join(path, "Data")
@@ -72,8 +79,19 @@ def evaluate():
 
     loss = results[0]
     accuracy = results[1]
-    precision = results[2]
-    recall = results[3]
+
+    # If precision/recall aren't returned properly in the list, compute manually
+    if len(results) > 2:
+        precision = results[2]
+        recall = results[3]
+    else:
+        print("Model evaluate did not return precision/recall directly. Fetching from sklearn metrics.")
+        Y_pred = model.predict(test_generator, verbose=0)
+        y_pred = np.argmax(Y_pred, axis=1)
+        y_true = test_generator.classes
+        from sklearn.metrics import precision_score, recall_score
+        precision = precision_score(y_true, y_pred, average='weighted', zero_division=0)
+        recall = recall_score(y_true, y_pred, average='weighted', zero_division=0)
 
     if (precision + recall) > 0:
         f1_score = 2 * (precision * recall) / (precision + recall)
@@ -92,9 +110,7 @@ def evaluate():
     Y_pred = model.predict(test_generator, verbose=1)
     y_pred = np.argmax(Y_pred, axis=1)
 
-    # We must match the class indices that the generator assigned
     class_indices = test_generator.class_indices
-    # Reverse dict
     index_to_class = {v: k for k, v in class_indices.items()}
     y_true = test_generator.classes
     class_labels = [index_to_class[i] for i in range(len(class_indices))]
@@ -112,7 +128,7 @@ def evaluate():
     print("Saved confusion_matrix.png")
 
     print("\nClassification Report:")
-    print(classification_report(y_true, y_pred, target_names=class_labels))
+    print(classification_report(y_true, y_pred, target_names=class_labels, zero_division=0))
 
     print("Generating ROC Curve...")
     n_classes = len(class_labels)

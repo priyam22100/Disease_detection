@@ -29,7 +29,6 @@ class_names = [
 ]
 
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name, pred_index=None):
-    # Retrieve the inner model if wrapped
     target_model = model
     for layer in model.layers:
         if isinstance(layer, tf.keras.Model):
@@ -78,14 +77,14 @@ if uploaded_file is not None:
     image = Image.open(uploaded_file).convert('RGB')
 
     with col1:
-        st.image(image, caption='Original Image', use_container_width=True)
+        st.image(image, caption='Original Image', width=None) # 'width=None' is auto size in Streamlit, or use custom width
 
     st.write("Analyzing the image...")
 
-    # Needs to match the input shape of the loaded model dynamically
-    model_input_shape = model.layers[0].input_shape[0][1:3] if isinstance(model.layers[0].input_shape, list) else model.layers[0].input_shape[1:3]
-    if model_input_shape[0] is None:
-        model_input_shape = (300, 300) # fallback
+    # We will use standard fallback for image shape since older TF saves models differently across platforms
+    model_input_shape = (300, 300)
+    if hasattr(model, 'input_shape') and len(model.input_shape) >= 3 and model.input_shape[1] is not None:
+        model_input_shape = (model.input_shape[1], model.input_shape[2])
 
     img = image.resize(model_input_shape)
     img_array = img_to_array(img)
@@ -97,23 +96,20 @@ if uploaded_file is not None:
 
     predicted_label = class_names[predicted_class_index]
 
-    # More robust logic to find the last Conv2D layer specifically:
     last_conv_layer_name = None
     target_model = model
 
-    # If the model is a Sequential or Functional wrapped around a base model (like EfficientNet)
     for layer in model.layers:
         if isinstance(layer, tf.keras.Model):
             target_model = layer
             break
 
-    # Now find the last convolutional layer in the target model
     for layer in reversed(target_model.layers):
-        if isinstance(layer, tf.keras.layers.Conv2D):
+        # Handle keras >= 3 explicitly where Conv2D is generic
+        if layer.__class__.__name__ == 'Conv2D':
             last_conv_layer_name = layer.name
             break
 
-    # Specific fallback for EfficientNet models which use 'top_conv'
     if not last_conv_layer_name:
         try:
             target_model.get_layer('top_conv')
@@ -126,7 +122,7 @@ if uploaded_file is not None:
             heatmap = make_gradcam_heatmap(img_array, model, last_conv_layer_name, predicted_class_index)
             gradcam_img = display_gradcam(image.resize(model_input_shape), heatmap)
             with col2:
-                st.image(gradcam_img, caption=f'Grad-CAM (Focus Area)', use_container_width=True)
+                st.image(gradcam_img, caption='Grad-CAM (Focus Area)', width=None)
         except Exception as e:
             st.warning(f"Could not generate Grad-CAM heatmap: {e}")
     else:

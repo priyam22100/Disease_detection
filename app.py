@@ -83,16 +83,29 @@ if uploaded_file is not None:
 
     last_conv_layer_name = None
     for layer in reversed(model.layers):
-        if isinstance(layer, tf.keras.Model):
+        if hasattr(layer, 'name') and 'conv' in layer.name.lower() and hasattr(layer, 'output_shape') and len(layer.output_shape) == 4:
+            last_conv_layer_name = layer.name
+            break
+        elif isinstance(layer, tf.keras.Model):
             for inner_layer in reversed(layer.layers):
-                if hasattr(inner_layer, 'output_shape') and isinstance(inner_layer.output_shape, tuple) and len(inner_layer.output_shape) == 4:
+                if hasattr(inner_layer, 'name') and 'conv' in inner_layer.name.lower() and hasattr(inner_layer, 'output_shape') and len(inner_layer.output_shape) == 4:
                     last_conv_layer_name = inner_layer.name
                     model = layer
                     break
-            break
-        elif hasattr(layer, 'output_shape') and isinstance(layer.output_shape, tuple) and len(layer.output_shape) == 4:
-            last_conv_layer_name = layer.name
-            break
+            if last_conv_layer_name:
+                break
+
+    # Fallback to top_conv if searching by 'conv' in name fails
+    if not last_conv_layer_name:
+         for layer in reversed(model.layers):
+            if isinstance(layer, tf.keras.Model):
+                try:
+                    _ = layer.get_layer('top_conv')
+                    last_conv_layer_name = 'top_conv'
+                    model = layer
+                    break
+                except ValueError:
+                    pass
 
     if last_conv_layer_name:
         try:

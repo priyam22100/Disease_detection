@@ -11,17 +11,6 @@ import seaborn as sns
 from sklearn.preprocessing import label_binarize
 import kagglehub
 
-def clean_label(label):
-    label = label.lower()
-    if 'adenocarcinoma' in label:
-        return 'Adenocarcinoma'
-    elif 'large.cell.carcinoma' in label:
-        return 'Large Cell Carcinoma'
-    elif 'squamous.cell.carcinoma' in label:
-        return 'Squamous Cell Carcinoma'
-    else:
-        return 'Normal'
-
 def get_dataframe(data_dir, split_name):
     filepaths = []
     labels = []
@@ -36,7 +25,7 @@ def get_dataframe(data_dir, split_name):
         for img_file in os.listdir(class_path):
             if img_file.endswith(('.png', '.jpg', '.jpeg')):
                 filepaths.append(os.path.join(class_path, img_file))
-                labels.append(clean_label(class_name))
+                labels.append(class_name)
     return pd.DataFrame({'filepath': filepaths, 'label': labels})
 
 def evaluate():
@@ -52,8 +41,8 @@ def evaluate():
                   loss='categorical_crossentropy',
                   metrics=['accuracy', tf.keras.metrics.Precision(name='precision'), tf.keras.metrics.Recall(name='recall')])
 
-    path = kagglehub.dataset_download('mohamedhanyyy/chest-ctscan-images')
-    data_dir = os.path.join(path, "Data")
+    path = kagglehub.dataset_download('paultimothymooney/chest-xray-pneumonia')
+    data_dir = os.path.join(path, "chest_xray")
 
     test_df = get_dataframe(data_dir, 'test')
 
@@ -142,6 +131,10 @@ def evaluate():
 
     plt.figure(figsize=(10, 8))
     colors = ['blue', 'red', 'green', 'orange']
+    # Adjust colors if binary classification
+    if n_classes == 2:
+        colors = ['blue', 'red']
+
     for i, color in zip(range(n_classes), colors):
         plt.plot(fpr[i], tpr[i], color=color, lw=2,
                  label=f'ROC curve of class {class_labels[i]} (area = {roc_auc[i]:0.2f})')
@@ -151,7 +144,7 @@ def evaluate():
     plt.ylim([0.0, 1.05])
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
-    plt.title('Multi-class ROC Curve')
+    plt.title('ROC Curve')
     plt.legend(loc="lower right")
     plt.tight_layout()
     plt.savefig('roc_curve.png')

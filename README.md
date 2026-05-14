@@ -1,12 +1,14 @@
-# Disease Detection using Deep Learning (Chest CT-Scans)
+# Pneumonia Detection using Deep Learning (Chest X-Rays)
 
-This is a B.Tech final year project utilizing Deep Learning to detect Chest Diseases (Adenocarcinoma, Large Cell Carcinoma, Squamous Cell Carcinoma, Normal) from CT scans.
+This is a B.Tech final year project utilizing Deep Learning to detect Pneumonia from Chest X-Rays using a massive dataset of ~6,000 images.
 
 ## Features
-- **Transfer Learning:** Uses `EfficientNetB3` (GPU-optimized) for high-accuracy feature extraction.
+- **Large Dataset:** Uses the classic Kaggle "Chest X-Ray Images (Pneumonia)" dataset for highly accurate, robust results.
+- **Transfer Learning:** Uses `ResNet50V2` (GPU-optimized) for high-accuracy feature extraction.
 - **Advanced Training:** Option to use Stratified K-Fold Cross Validation.
-- **Frontend App:** Built with Streamlit, allows users to upload a CT scan for prediction.
-- **Explainable AI:** Includes Grad-CAM dynamically applied over the last convolutional layer to highlight the tumor focus area.
+- **Class Weights:** Automatically balances penalties for underrepresented classes to prevent prediction bias.
+- **Frontend App:** Built with Streamlit, allows users to upload an X-ray scan for prediction.
+- **Explainable AI:** Includes Grad-CAM dynamically applied over the last convolutional layer to highlight the opaque/white areas in the lungs indicating infection.
 
 ---
 

@@ -13,22 +13,11 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.utils.class_weight import compute_class_weight
 import kagglehub
 
-def clean_label(label):
-    label = label.lower()
-    if 'adenocarcinoma' in label:
-        return 'Adenocarcinoma'
-    elif 'large.cell.carcinoma' in label:
-        return 'Large Cell Carcinoma'
-    elif 'squamous.cell.carcinoma' in label:
-        return 'Squamous Cell Carcinoma'
-    else:
-        return 'Normal'
-
 def get_dataframe(data_dir):
     filepaths = []
     labels = []
 
-    for split in ['train', 'valid', 'test']:
+    for split in ['train', 'val', 'test']:
         split_path = os.path.join(data_dir, split)
         if not os.path.exists(split_path):
             continue
@@ -41,7 +30,7 @@ def get_dataframe(data_dir):
             for img_file in os.listdir(class_path):
                 if img_file.endswith(('.png', '.jpg', '.jpeg')):
                     filepaths.append(os.path.join(class_path, img_file))
-                    labels.append(clean_label(class_name))
+                    labels.append(class_name)
 
     df = pd.DataFrame({
         'filepath': filepaths,
@@ -63,8 +52,8 @@ def build_model(num_classes):
 
 def train_kfold():
     print("Downloading dataset...")
-    path = kagglehub.dataset_download('mohamedhanyyy/chest-ctscan-images')
-    data_dir = os.path.join(path, "Data")
+    path = kagglehub.dataset_download('paultimothymooney/chest-xray-pneumonia')
+    data_dir = os.path.join(path, "chest_xray")
 
     df = get_dataframe(data_dir)
     print(f"Total images found: {len(df)}")
@@ -80,11 +69,10 @@ def train_kfold():
 
     train_datagen = ImageDataGenerator(
         preprocessing_function=preprocess_input,
-        rotation_range=20,
-        width_shift_range=0.2,
-        height_shift_range=0.2,
-        zoom_range=0.2,
-        shear_range=0.15,
+        rotation_range=10,
+        width_shift_range=0.1,
+        height_shift_range=0.1,
+        zoom_range=0.1,
         horizontal_flip=True,
         fill_mode='nearest'
     )
@@ -133,7 +121,7 @@ def train_kfold():
                       metrics=['accuracy'])
 
         callbacks = [
-            EarlyStopping(monitor='val_loss', patience=6, restore_best_weights=True, verbose=1),
+            EarlyStopping(monitor='val_loss', patience=4, restore_best_weights=True, verbose=1),
             ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=2, verbose=1, min_lr=1e-6)
         ]
 
@@ -141,7 +129,7 @@ def train_kfold():
         model.fit(
             train_generator,
             validation_data=valid_generator,
-            epochs=10,
+            epochs=8,
             class_weight=class_weights,
             callbacks=callbacks
         )
@@ -161,7 +149,7 @@ def train_kfold():
         history = model.fit(
             train_generator,
             validation_data=valid_generator,
-            epochs=20,
+            epochs=12,
             class_weight=class_weights,
             callbacks=callbacks
         )

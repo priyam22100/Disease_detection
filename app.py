@@ -7,10 +7,10 @@ import numpy as np
 from PIL import Image
 import cv2
 
-st.set_page_config(page_title="Chest CT-Scan Classifier", page_icon="🫁", layout="wide")
+st.set_page_config(page_title="Pneumonia Chest X-Ray Classifier", page_icon="🫁", layout="wide")
 
-st.title("🫁 Chest CT-Scan Classification with Grad-CAM")
-st.write("Upload a Chest CT-Scan image to detect the type of disease and visualize the areas the model focused on.")
+st.title("🫁 Chest X-Ray Pneumonia Detection with Grad-CAM")
+st.write("Upload a Chest X-Ray image to detect Pneumonia and visualize the infected areas the model focused on.")
 
 @st.cache_resource
 def load_trained_model():
@@ -22,12 +22,8 @@ except Exception as e:
     st.error(f"Error loading model: {e}. Make sure 'best_model.h5' exists in the directory.")
     st.stop()
 
-class_names = [
-    'Adenocarcinoma',
-    'Large Cell Carcinoma',
-    'Normal',
-    'Squamous Cell Carcinoma'
-]
+# For the pneumonia dataset the classes are usually NORMAL and PNEUMONIA
+class_names = ['NORMAL', 'PNEUMONIA']
 
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name, pred_index=None):
     target_model = model
@@ -89,8 +85,6 @@ if uploaded_file is not None:
     img = image.resize(model_input_shape)
     img_array = img_to_array(img)
     img_array = np.expand_dims(img_array, axis=0)
-
-    # ResNet50V2 requires its own specific preprocessing function
     img_array = preprocess_input(img_array)
 
     predictions = model.predict(img_array)
@@ -125,7 +119,7 @@ if uploaded_file is not None:
 
     st.markdown("### Prediction Result")
 
-    if predicted_label == 'Normal':
+    if predicted_label == 'NORMAL':
         st.success(f"**Diagnosis:** {predicted_label}")
     else:
         st.error(f"**Diagnosis:** {predicted_label}")

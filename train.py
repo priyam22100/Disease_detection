@@ -12,76 +12,55 @@ from tensorflow.keras.applications.resnet_v2 import preprocess_input
 from sklearn.utils.class_weight import compute_class_weight
 import kagglehub
 
-def clean_label(label):
-    label = label.lower()
-    if 'adenocarcinoma' in label:
-        return 'Adenocarcinoma'
-    elif 'large.cell.carcinoma' in label:
-        return 'Large Cell Carcinoma'
-    elif 'squamous.cell.carcinoma' in label:
-        return 'Squamous Cell Carcinoma'
-    else:
-        return 'Normal'
-
-def get_dataframe(data_dir, split_name):
-    filepaths = []
-    labels = []
-    split_path = os.path.join(data_dir, split_name)
-    if not os.path.exists(split_path):
-        return pd.DataFrame()
-
-    for class_name in os.listdir(split_path):
-        class_path = os.path.join(split_path, class_name)
-        if not os.path.isdir(class_path):
-            continue
-        for img_file in os.listdir(class_path):
-            if img_file.endswith(('.png', '.jpg', '.jpeg')):
-                filepaths.append(os.path.join(class_path, img_file))
-                labels.append(clean_label(class_name))
-    return pd.DataFrame({'filepath': filepaths, 'label': labels})
-
 def train():
     print("Downloading dataset...")
-    path = kagglehub.dataset_download('mohamedhanyyy/chest-ctscan-images')
-    data_dir = os.path.join(path, "Data")
+    # Using the massive chest x-ray pneumonia dataset (almost 6000 images)
+    path = kagglehub.dataset_download('paultimothymooney/chest-xray-pneumonia')
+    data_dir = os.path.join(path, "chest_xray")
 
-    train_df = get_dataframe(data_dir, 'train')
-    valid_df = get_dataframe(data_dir, 'valid')
+    train_dir = os.path.join(data_dir, 'train')
+    valid_dir = os.path.join(data_dir, 'val') # Some Kaggle datasets use 'val'
+    test_dir = os.path.join(data_dir, 'test')
 
     IMG_SIZE = (224, 224)
     BATCH_SIZE = 32
 
-    # Using ResNet50V2 specific preprocessing
     train_datagen = ImageDataGenerator(
         preprocessing_function=preprocess_input,
-        rotation_range=20,
-        width_shift_range=0.2,
-        height_shift_range=0.2,
-        zoom_range=0.2,
-        shear_range=0.15,
+        rotation_range=10,
+        width_shift_range=0.1,
+        height_shift_range=0.1,
+        zoom_range=0.1,
         horizontal_flip=True,
         fill_mode='nearest'
     )
 
     test_datagen = ImageDataGenerator(preprocessing_function=preprocess_input)
 
-    train_generator = train_datagen.flow_from_dataframe(
-        train_df,
-        x_col='filepath',
-        y_col='label',
+    train_generator = train_datagen.flow_from_directory(
+        train_dir,
         target_size=IMG_SIZE,
         batch_size=BATCH_SIZE,
         class_mode='categorical'
     )
 
-    valid_generator = test_datagen.flow_from_dataframe(
-        valid_df,
-        x_col='filepath',
-        y_col='label',
+    valid_generator = test_datagen.flow_from_directory(
+        valid_dir,
         target_size=IMG_SIZE,
         batch_size=BATCH_SIZE,
         class_mode='categorical'
     )
+
+    # If the val set is too small, fallback to testing on the test set during training
+    # (Pneumonia dataset has 16 images in val, and 624 in test)
+    if valid_generator.samples < 50:
+        print("Validation set is very small, using 'test' directory for validation during training...")
+        valid_generator = test_datagen.flow_from_directory(
+            test_dir,
+            target_size=IMG_SIZE,
+            batch_size=BATCH_SIZE,
+            class_mode='categorical'
+        )
 
     # Handle Class Imbalance
     class_weights_arr = compute_class_weight(
@@ -92,7 +71,8 @@ def train():
     class_weights = dict(enumerate(class_weights_arr))
     print(f"Computed Class Weights: {class_weights}")
 
-    num_classes = train_df['label'].nunique()
+    num_classes = len(train_generator.class_indices)
+    print(f"Classes: {train_generator.class_indices}")
 
     base_model = ResNet50V2(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
     base_model.trainable = False
@@ -110,15 +90,15 @@ def train():
 
     callbacks = [
         ModelCheckpoint('best_model.h5', monitor='val_accuracy', save_best_only=True, mode='max', verbose=1),
-        EarlyStopping(monitor='val_loss', patience=8, restore_best_weights=True, verbose=1),
-        ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, verbose=1, min_lr=1e-6)
+        EarlyStopping(monitor='val_loss', patience=6, restore_best_weights=True, verbose=1),
+        ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=2, verbose=1, min_lr=1e-6)
     ]
 
     print("Training top layers...")
     model.fit(
         train_generator,
         validation_data=valid_generator,
-        epochs=15,
+        epochs=10,
         class_weight=class_weights,
         callbacks=callbacks
     )
@@ -135,7 +115,7 @@ def train():
     model.fit(
         train_generator,
         validation_data=valid_generator,
-        epochs=30,
+        epochs=15,
         class_weight=class_weights,
         callbacks=callbacks
     )

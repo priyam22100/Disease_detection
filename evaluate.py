@@ -9,24 +9,6 @@ from sklearn.metrics import classification_report, confusion_matrix, roc_curve, 
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.preprocessing import label_binarize
-import kagglehub
-
-def get_dataframe(data_dir, split_name):
-    filepaths = []
-    labels = []
-    split_path = os.path.join(data_dir, split_name)
-    if not os.path.exists(split_path):
-        return pd.DataFrame()
-
-    for class_name in os.listdir(split_path):
-        class_path = os.path.join(split_path, class_name)
-        if not os.path.isdir(class_path):
-            continue
-        for img_file in os.listdir(class_path):
-            if img_file.endswith(('.png', '.jpg', '.jpeg')):
-                filepaths.append(os.path.join(class_path, img_file))
-                labels.append(class_name)
-    return pd.DataFrame({'filepath': filepaths, 'label': labels})
 
 def evaluate():
     model_path = 'best_model.h5'
@@ -41,10 +23,11 @@ def evaluate():
                   loss='categorical_crossentropy',
                   metrics=['accuracy', tf.keras.metrics.Precision(name='precision'), tf.keras.metrics.Recall(name='recall')])
 
-    path = kagglehub.dataset_download('paultimothymooney/chest-xray-pneumonia')
-    data_dir = os.path.join(path, "chest_xray")
+    if not os.path.exists("test_data.csv"):
+        print("test_data.csv not found. Please run train.py first to generate the test split.")
+        return
 
-    test_df = get_dataframe(data_dir, 'test')
+    test_df = pd.read_csv("test_data.csv")
 
     IMG_SIZE = (224, 224)
     BATCH_SIZE = 32
@@ -131,7 +114,6 @@ def evaluate():
 
     plt.figure(figsize=(10, 8))
     colors = ['blue', 'red', 'green', 'orange']
-    # Adjust colors if binary classification
     if n_classes == 2:
         colors = ['blue', 'red']
 

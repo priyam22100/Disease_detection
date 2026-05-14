@@ -7,10 +7,10 @@ import numpy as np
 from PIL import Image
 import cv2
 
-st.set_page_config(page_title="Pneumonia Chest X-Ray Classifier", page_icon="🫁", layout="wide")
+st.set_page_config(page_title="COVID-19 & Pneumonia Classifier", page_icon="🫁", layout="wide")
 
-st.title("🫁 Chest X-Ray Pneumonia Detection with Grad-CAM")
-st.write("Upload a Chest X-Ray image to detect Pneumonia and visualize the infected areas the model focused on.")
+st.title("🫁 COVID-19 & Pneumonia Classification with Grad-CAM")
+st.write("Upload a Chest X-Ray image to detect COVID-19, Viral Pneumonia, Lung Opacity, or Normal, and visualize the model's focus area.")
 
 @st.cache_resource
 def load_trained_model():
@@ -22,8 +22,12 @@ except Exception as e:
     st.error(f"Error loading model: {e}. Make sure 'best_model.h5' exists in the directory.")
     st.stop()
 
-# For the pneumonia dataset the classes are usually NORMAL and PNEUMONIA
-class_names = ['NORMAL', 'PNEUMONIA']
+class_names = [
+    'COVID',
+    'Lung Opacity',
+    'Normal',
+    'Viral Pneumonia'
+]
 
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name, pred_index=None):
     target_model = model
@@ -74,7 +78,7 @@ if uploaded_file is not None:
     image = Image.open(uploaded_file).convert('RGB')
 
     with col1:
-        st.image(image, caption='Original Image', use_container_width=True)
+        st.image(image, caption='Original Image', width=None)
 
     st.write("Analyzing the image...")
 
@@ -111,7 +115,7 @@ if uploaded_file is not None:
             heatmap = make_gradcam_heatmap(img_array, model, last_conv_layer_name, predicted_class_index)
             gradcam_img = display_gradcam(image.resize(model_input_shape), heatmap)
             with col2:
-                st.image(gradcam_img, caption='Grad-CAM (Focus Area)', use_container_width=True)
+                st.image(gradcam_img, caption='Grad-CAM (Focus Area)', width=None)
         except Exception as e:
             st.warning(f"Could not generate Grad-CAM heatmap: {e}")
     else:
@@ -119,7 +123,7 @@ if uploaded_file is not None:
 
     st.markdown("### Prediction Result")
 
-    if predicted_label == 'NORMAL':
+    if predicted_label == 'Normal':
         st.success(f"**Diagnosis:** {predicted_label}")
     else:
         st.error(f"**Diagnosis:** {predicted_label}")

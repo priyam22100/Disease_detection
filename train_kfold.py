@@ -17,20 +17,23 @@ def get_dataframe(data_dir):
     filepaths = []
     labels = []
 
-    for split in ['train', 'val', 'test']:
-        split_path = os.path.join(data_dir, split)
-        if not os.path.exists(split_path):
+    main_folder = os.path.join(data_dir, "COVID-19_Radiography_Dataset")
+    if not os.path.exists(main_folder):
+        main_folder = data_dir
+
+    for class_name in os.listdir(main_folder):
+        class_path = os.path.join(main_folder, class_name)
+        if not os.path.isdir(class_path) or class_name.startswith('.'):
             continue
 
-        for class_name in os.listdir(split_path):
-            class_path = os.path.join(split_path, class_name)
-            if not os.path.isdir(class_path):
-                continue
+        image_dir = os.path.join(class_path, 'images')
+        if not os.path.exists(image_dir):
+            image_dir = class_path
 
-            for img_file in os.listdir(class_path):
-                if img_file.endswith(('.png', '.jpg', '.jpeg')):
-                    filepaths.append(os.path.join(class_path, img_file))
-                    labels.append(class_name)
+        for img_file in os.listdir(image_dir):
+            if img_file.lower().endswith(('.png', '.jpg', '.jpeg')):
+                filepaths.append(os.path.join(image_dir, img_file))
+                labels.append(class_name.replace('_', ' '))
 
     df = pd.DataFrame({
         'filepath': filepaths,
@@ -52,10 +55,9 @@ def build_model(num_classes):
 
 def train_kfold():
     print("Downloading dataset...")
-    path = kagglehub.dataset_download('paultimothymooney/chest-xray-pneumonia')
-    data_dir = os.path.join(path, "chest_xray")
+    path = kagglehub.dataset_download('tawsifurrahman/covid19-radiography-database')
 
-    df = get_dataframe(data_dir)
+    df = get_dataframe(path)
     print(f"Total images found: {len(df)}")
 
     num_classes = df['label'].nunique()
@@ -69,7 +71,7 @@ def train_kfold():
 
     train_datagen = ImageDataGenerator(
         preprocessing_function=preprocess_input,
-        rotation_range=10,
+        rotation_range=15,
         width_shift_range=0.1,
         height_shift_range=0.1,
         zoom_range=0.1,

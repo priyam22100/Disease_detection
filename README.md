@@ -1,13 +1,13 @@
-# Pneumonia Detection using Deep Learning (Chest X-Rays)
+# COVID-19 & Pneumonia Detection using Deep Learning (Chest X-Rays)
 
-This is a B.Tech final year project utilizing Deep Learning to detect Pneumonia from Chest X-Rays using a massive dataset of ~6,000 images.
+This is a B.Tech final year project utilizing Deep Learning to perform multi-class classification of Chest Diseases (COVID, Lung Opacity, Viral Pneumonia, Normal) from X-ray scans.
 
 ## Features
-- **Large Dataset:** Uses the classic Kaggle "Chest X-Ray Images (Pneumonia)" dataset for highly accurate, robust results.
+- **Massive Dataset:** Uses the renowned `COVID-19 Radiography Database` (over 21,000 images) to train a highly robust model, avoiding class-imbalance and small-sample overfitting entirely.
 - **Transfer Learning:** Uses `ResNet50V2` (GPU-optimized) for high-accuracy feature extraction.
 - **Advanced Training:** Option to use Stratified K-Fold Cross Validation.
-- **Class Weights:** Automatically balances penalties for underrepresented classes to prevent prediction bias.
-- **Frontend App:** Built with Streamlit, allows users to upload an X-ray scan for prediction.
+- **Class Weights:** Automatically balances penalties for any residual underrepresented classes to prevent prediction bias.
+- **Frontend App:** Built with Streamlit, allows users to upload a chest X-ray scan for prediction.
 - **Explainable AI:** Includes Grad-CAM dynamically applied over the last convolutional layer to highlight the opaque/white areas in the lungs indicating infection.
 
 ---
@@ -42,11 +42,11 @@ If the script says "No GPU found by TensorFlow" despite you having an RTX GPU, T
    - For rigorous, 5-Fold training: `python train_kfold.py`
    *(Both will output a `best_model.h5` file)*
 
-3. **Evaluate the Model (Optional):**
+3. **Evaluate the Model:**
    ```bash
    python evaluate.py
    ```
-   This will output the classification metrics (>0.9 expected on GPU) and save `confusion_matrix.png` and `roc_curve.png`.
+   This will test your `best_model.h5` against the hold-out `test_data.csv` generated during training. It outputs classification metrics (>0.9 expected) and saves `confusion_matrix.png` and `roc_curve.png`.
 
 4. **Launch the Web App:**
    ```bash
